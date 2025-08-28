@@ -1,0 +1,5 @@
+# Ignore .mypy_cache
+.mypy_cache/
+
+# Ignore .csv files
+*.csv
