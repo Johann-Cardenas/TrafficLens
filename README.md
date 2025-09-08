@@ -27,6 +27,24 @@ The following are required columns: `id`,  `time`, `xloc_kf`, `yloc_kf`, `lane_k
 
 The source of the sample data is the **U.S. DOT data portal — TGSIM I-90/I-94, Run 1 trajectory data** .
 
+See below the dataset column dictionary:
+
+- `id`: Unique numerical identifier for each detected vehicle trajectory. Used to group observations, compute headways, and plot per-vehicle trajectories.
+- `time`: Time stamp of the measuremente, relative to the start of the run (in seconds). Used for all time-based analysis (Trajectories, speeds, headways, flow).
+- `xloc_kf`: Vehicle x-coordinate in global coordinates of the reference image, smoothed with a Kalman Filter. One spatial axis of the trajectory, also part of ROI selection.
+- `yloc_kf`: Vehicle y-coordinate in global coordinates of the reference image, smoothed with a Kalman Filter. Often treated as the longitudinal axis for headway and density calculations.
+- `lane_kf`: Lane assignment after Kalma Filtering. Lane IDs correspond to positions on the reference image.
+  - For Runs 1, 3, and 5: Lane 1 = innermost, Lane 6 = rightmost.
+  - For Runs 2, 4, and 6: Lane 10 = innermost, Lane 15 = rightmost. 
+  - Express lanes are excluded. This field enables lane-based filtering and lane occupancy plots.
+- `speed_kf`: Vehicle speed after Kalman Filtering. Basis for speed distributions, time-series plots, and space-mean speed.
+- `acceleration_kf`: Vehicle acceleration after Kalman Filtering. Used in acceleration distribution plots and for examining vehicle dynamics.
+- `length_smoothed`: Smoothed bounding-box length of the detected vehicle (proxy for physical vehicle length). Useful if refining space headways into bumper-to-bumper gaps.
+- `width_smoothed`: Smoothed bounding-box width of the detected vehicle (proxy for physical vehicle width). Relevant for cross-lane spaceing checks.
+- `type_most_common`: Vehicle classification (e.g., small vehicle, large vehicle). Provides filtering and stratification of analyses.
+- `av`: Indicator of automation status. Labeled `Yes` for automated vehicles and `No` otherwise. Supports comparative studies (AV vs human-driven).
+- `run_index`: Index of the data collection process (e.g., Run 1). Ensures subsets of the dataset are analyzed in context of the correct experimental run.
+
 ### 3) Preprocessing
 
 - Timestamps normalized to numeric seconds if provided as datetime strings.
