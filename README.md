@@ -8,8 +8,9 @@ Interactive Streamlit app to visualize and analyze the Third-Generation Simulati
 
 ```powershell
 # From existing environment
-pip install -r requirements.txt
-streamlit run app.py
+python -m pip install --upgrade pip   # Upgrade pip
+pip install -r requirements.txt       # Set up requirements
+streamlit run app.py                  # Run app
 
 # From a new environment
 python -m venv .venv && . .venv/Scripts/activate  
@@ -17,7 +18,9 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Place your dataset in ./data/ (CSV) or use the Upload option in the sidebar.
+> [!NOTE]
+> Place your dataset in ./data/ (CSV) or use the Upload option in the sidebar. 
+> Notice there is a 200MB limit for uploads..
 
 ### 2) Dataset Access 
 The following are required columns: `id`,  `time`, `xloc_kf`, `yloc_kf`, `lane_kf` , `speed_kf` , `acceleration_kf`, `length_smoothed`, `width_smoothed`, `type_most_common`, `av`,  `run_index`.
