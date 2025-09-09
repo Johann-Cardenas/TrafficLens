@@ -4,6 +4,7 @@ import time
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(page_title="TrafficLens — TGSIM Explorer", layout="wide")
@@ -230,8 +231,18 @@ with st.sidebar:
     
     flow_window = st.slider("Flow window (s)", 5, 120, 30, 5)
     time_bin = st.slider("Bin (s) for density & space-mean speed", 1, 120, 10, 1)
+    
+    st.header("Macroscopic Study Controls")
 
-# Filter once (vectorized) and reuse
+# Apply filters (vectorized) — we compute df_f before using bounds for macro controls
+mask_global = (
+    df["run_index"].isin(st.session_state.run_sel) &
+    df["lane_kf"].isin(lanes_all) # temp placeholder; lane filter applied below with widget value
+)
+# Full filter with all widget selections happens after widgets; we need bounds first, so do a quick pass:
+df_tmp = df.copy()
+
+# Now finalize filtered df
 mask = (
     df["run_index"].isin(run_sel) &
     df["lane_kf"].isin(lane_sel) &
@@ -243,6 +254,32 @@ df_f = df.loc[mask]
 if df_f.empty:
     st.warning("No data after filtering")
     st.stop()
+    
+# Determine spatial bounds for macro controls
+x_min_all = float(np.nanmin(df_f["xloc_kf"]))
+x_max_all = float(np.nanmax(df_f["xloc_kf"]))    
+
+with st.sidebar:
+    with st.expander("Select duration & location to study relationships", expanded=True):
+        st.caption("Define two scenarios (A/B) to see how measurement duration and spatial location change the curves.")
+        # Scenario A
+        st.subheader("Scenario A")
+        macro_bin_A = st.slider("Measurement duration A (s)", 5, 600, 60, 5, key="macro_bin_A")
+        x_range_A = st.slider(
+            "Location A: x-range (m)",
+             min_value=float(x_min_all), max_value=float(x_max_all),
+             value=(float(x_min_all), float(x_max_all)), step=1.0, key="x_range_A"
+         )
+        # Scenario B
+        st.subheader("Scenario B")
+        macro_bin_B = st.slider("Measurement duration B (s)", 5, 600, 120, 5, key="macro_bin_B")
+        mid = (x_min_all + x_max_all) / 2.0
+        default_B = (float(mid), float(x_max_all)) if (x_max_all - x_min_all) > 1 else (float(x_min_all), float(x_max_all))
+        x_range_B = st.slider(
+            "Location B: x-range (m)",
+            min_value=float(x_min_all), max_value=float(x_max_all),
+            value=default_B, step=1.0, key="x_range_B"
+         )
 
 # Sample vehicle IDs for plotting (NOT for analytics)
 @st.cache_data(show_spinner=False)
@@ -323,7 +360,55 @@ def compute_space_mean_speed(df_in: pd.DataFrame, time_bin: int = 10) -> pd.Data
     res.columns = ["t", "v"]
     return res
 
+
+# === Macroscopic Relationships (speed-flow-density) ===
+@st.cache_data(show_spinner=False)
+def compute_macros(df_in: pd.DataFrame, x_min: float, x_max: float, bin_s: int) -> pd.DataFrame:
+    """Aggregate within a spatial segment and duration to get (flow, density, sms)."""
+    if df_in.empty or x_max <= x_min:
+        return pd.DataFrame({"t": [], "flow_vph": [], "density_vpkm": [], "sms_mps": []})
+    seg = df_in[(df_in["xloc_kf"] >= x_min) & (df_in["xloc_kf"] <= x_max)]
+    if seg.empty:
+        return pd.DataFrame({"t": [], "flow_vph": [], "density_vpkm": [], "sms_mps": []})
+
+    tb = (np.floor(seg["time"].to_numpy(dtype="float32") / bin_s) * bin_s).astype("int32")
+    tmp = seg.assign(_tb=tb)
+    g = tmp.groupby("_tb", observed=True)
+
+    # Flow: vehicles per hour (approximate using unique vehicles seen in the window)
+    n = g["id"].nunique()
+    flow_vph = n * (3600.0 / max(bin_s, 1e-6))
+
+    # Density: vehicles per km within the chosen segment (approximate)
+    length_km = max((x_max - x_min) / 1000.0, 1e-6)
+    density_vpkm = n / length_km
+
+    # Space-mean speed: harmonic mean of speeds
+    def harmonic_mean_series(s: pd.Series) -> float:
+        arr = np.clip(s.to_numpy(dtype="float32"), 1e-6, None)
+        return float(len(arr) / np.sum(1.0 / arr))
+    v_sms = g["speed_kf"].apply(harmonic_mean_series)
+
+    out = pd.DataFrame({
+        "t": n.index.values.astype("int32"),
+        "flow_vph": flow_vph.astype("float32"),
+        "density_vpkm": density_vpkm.astype("float32"),
+        "sms_mps": v_sms.astype("float32"),
+    })
+    return out
+
+# Compute scenarios A and B
+macro_A = compute_macros(df_f, x_range_A[0], x_range_A[1], int(macro_bin_A))
+macro_B = compute_macros(df_f, x_range_B[0], x_range_B[1], int(macro_bin_B))
+
 # ============ Main layout ============
+# Main title and caption
+st.markdown("""
+<div style="text-align:center;">
+<h1 style="font-size:3.0em; font-weight:bold;">🚦 Traffic Lens</h1>
+<p style="font-size:0.9em; color:gray;">An interactive tool to explore large-scale TGSIM trajectory data, visualize traffic dynamics, and analyze flow–density–speed relationships.</p>
+</div>
+""", unsafe_allow_html=True)
 
 st.subheader("Main Trajectory Plot — Space–Time Diagram")
 fig_main = px.line(
@@ -331,7 +416,7 @@ fig_main = px.line(
     x="time", y="xloc_kf",
     color="lane_kf", line_group="id",
     hover_data=["id", "speed_kf", "lane_kf"],
-    title="X vs Time (lane colored, vehicle sampling applied to plot only)"
+    title="X vs Time"
 )
 fig_main.update_xaxes(title="Time [s]")
 fig_main.update_yaxes(title="xloc_kf [m]")
@@ -342,7 +427,7 @@ st.subheader("Lane Occupancy vs Speed")
 fig_occ = px.scatter(
     df_plot_subset, x="speed_kf", y="lane_kf",
     color="lane_kf", hover_data=["id", "time"],
-    title="Lane Occupancy vs Speed (vehicle sampling applied to plot only)"
+    title="Lane Occupancy vs Speed"
 )
 fig_occ.update_xaxes(title="Speed [m/s]")
 fig_occ.update_yaxes(title="Lane ID")
@@ -356,14 +441,14 @@ with c1:
         x="time", y="speed_kf",
         color="id", line_group="id",
         hover_data=["lane_kf"],
-        title="Speed vs Time (vehicle sampling applied to plot only)"
+        title="Speed vs Time"
     )
     fig_st.update_xaxes(title="Time [s]")
     fig_st.update_yaxes(title="Speed [m/s]")
     st.plotly_chart(fig_st, use_container_width=True)
 with c2:
     # Histogram can use all filtered data (cheap) or sampled; keep all for fidelity
-    fig_hist = px.histogram(df_f, x="speed_kf", nbins=50, title="Speed Histogram (all filtered data)")
+    fig_hist = px.histogram(df_f, x="speed_kf", nbins=50, title="Speed Histogram")
     fig_hist.update_xaxes(title="Speed [m/s]")
     st.plotly_chart(fig_hist, use_container_width=True)
 
@@ -371,13 +456,13 @@ with c2:
 c3, c4 = st.columns(2)
 with c3:
     # Box on all filtered data (uses quantiles; still cheap)
-    fig_sd = px.box(df_f, x="lane_kf", y="speed_kf", points=False, title="Speed Distribution by Lane (all filtered data)")
+    fig_sd = px.box(df_f, x="lane_kf", y="speed_kf", points=False, title="Speed Distribution by Lane")
     fig_sd.update_yaxes(title="Speed [m/s]")
     st.plotly_chart(fig_sd, use_container_width=True)
 with c4:
     hw = compute_time_headways(df_f)
     if not hw.empty:
-        fig_hw = px.histogram(hw, x=hw, nbins=60, title="Time Headway Distribution (all filtered data)")
+        fig_hw = px.histogram(hw, x=hw, nbins=60, title="Time Headway Distribution")
         fig_hw.update_xaxes(title="Headway [s]")
         st.plotly_chart(fig_hw, use_container_width=True)
     else:
@@ -390,11 +475,13 @@ with c5:
     flow = compute_flow(df_f, window=flow_window)
     fig_flow = px.line(flow, x="t", y="flow", title=f"Flow (veh / {flow_window}s window)")
     fig_flow.update_xaxes(title="Time [s]")
+    fig_flow.update_yaxes(title=f"Flow [veh / {flow_window}s]")
     st.plotly_chart(fig_flow, use_container_width=True)
 with c6:
     dens = compute_density(df_f, seg_length_m=500.0, time_bin=time_bin)
     fig_dens = px.line(dens, x="t", y="density", title=f"Density (veh/km, bin={time_bin}s)")
     fig_dens.update_xaxes(title="Time [s]")
+    fig_dens.update_yaxes(title="Density [veh/km]")
     st.plotly_chart(fig_dens, use_container_width=True)
 with c7:
     sms = compute_space_mean_speed(df_f, time_bin=time_bin)
@@ -402,6 +489,68 @@ with c7:
     fig_sms.update_xaxes(title="Time [s]")
     fig_sms.update_yaxes(title="Speed [m/s]")
     st.plotly_chart(fig_sms, use_container_width=True)
+
+
+# == Assignment 2 ==
+st.subheader("Macroscopic Relationships - Impact of Duration & Location")
+
+# Flow-Density
+fig_fd = go.Figure()
+if not macro_A.empty:
+    fig_fd.add_trace(go.Scatter(
+        x=macro_A["density_vpkm"], y=macro_A["flow_vph"],
+        mode="markers", name=f"A: {int(macro_bin_A)}s, x∈[{x_range_A[0]:.0f},{x_range_A[1]:.0f}] m",
+        hovertemplate="density=%{x:.2f} veh/km<br>flow=%{y:.0f} veh/h<extra></extra>"
+    ))
+
+if not macro_B.empty:
+    fig_fd.add_trace(go.Scatter(
+        x=macro_B["density_vpkm"], y=macro_B["flow_vph"], mode="markers",
+        name=f"B: {int(macro_bin_B)}s, x∈[{x_range_B[0]:.0f},{x_range_B[1]:.0f}] m",
+        hovertemplate="density=%{x:.2f} veh/km<br>flow=%{y:.0f} veh/h<extra></extra>"
+    ))
+fig_fd.update_layout(title="Flow–Density", xaxis_title="Density [veh/km]", yaxis_title="Flow [veh/h]")
+
+# Speed–Density
+fig_sd_rel = go.Figure()
+if not macro_A.empty:
+    fig_sd_rel.add_trace(go.Scatter(
+        x=macro_A["density_vpkm"], y=macro_A["sms_mps"], mode="markers",
+        name=f"A: {int(macro_bin_A)}s, x∈[{x_range_A[0]:.0f},{x_range_A[1]:.0f}] m",
+        hovertemplate="density=%{x:.2f} veh/km<br>v_sms=%{y:.2f} m/s<extra></extra>"    
+    ))
+if not macro_B.empty:
+    fig_sd_rel.add_trace(go.Scatter(
+        x=macro_B["density_vpkm"], y=macro_B["sms_mps"], mode="markers",
+        name=f"B: {int(macro_bin_B)}s, x∈[{x_range_B[0]:.0f},{x_range_B[1]:.0f}] m",
+        hovertemplate="density=%{x:.2f} veh/km<br>v_sms=%{y:.2f} m/s<extra></extra>"
+    ))
+fig_sd_rel.update_layout(title="Speed–Density", xaxis_title="Density [veh/km]", yaxis_title="Space-Mean Speed [m/s]")
+
+# Speed–Flow
+fig_sf = go.Figure()
+if not macro_A.empty:
+    fig_sf.add_trace(go.Scatter(
+        x=macro_A["flow_vph"], y=macro_A["sms_mps"], mode="markers",
+        name=f"A: {int(macro_bin_A)}s, x∈[{x_range_A[0]:.0f},{x_range_A[1]:.0f}] m",
+        hovertemplate="flow=%{x:.0f} veh/h<br>v_sms=%{y:.2f} m/s<extra></extra>"
+    ))
+if not macro_B.empty:
+    fig_sf.add_trace(go.Scatter(
+        x=macro_B["flow_vph"], y=macro_B["sms_mps"], mode="markers",
+        name=f"B: {int(macro_bin_B)}s, x∈[{x_range_B[0]:.0f},{x_range_B[1]:.0f}] m",
+        hovertemplate="flow=%{x:.0f} veh/h<br>v_sms=%{y:.2f} m/s<extra></extra>"
+    ))
+fig_sf.update_layout(title="Speed–Flow", xaxis_title="Flow [veh/h]", yaxis_title="Space-Mean Speed [m/s]")
+
+
+cA, cB, cC = st.columns(3)
+with cA:
+    st.plotly_chart(fig_fd, use_container_width=True)
+with cB:
+    st.plotly_chart(fig_sd_rel, use_container_width=True)
+with cC:
+    st.plotly_chart(fig_sf, use_container_width=True)
 
 # Preview
 with st.expander("Preview filtered data"):
