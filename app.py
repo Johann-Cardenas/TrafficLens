@@ -207,15 +207,27 @@ with st.sidebar:
     lanes_all = sorted(df["lane_kf"].dropna().unique().tolist())
     types_all = sorted(df["type_most_common"].astype(str).unique().tolist())
     av_all = sorted(df["av"].astype(str).unique().tolist())
-
-    run_sel = st.multiselect("Run index", runs_all, default=runs_all)
+    
+    # Initialize once: show only Run 1 on first render (if present)
+    if "run_sel" not in st.session_state:
+        st.session_state.run_sel = [1] if 1 in runs_all else runs_all
+    else:
+        # Keep session value valid if dataet changes (e.g., re-upload)
+        st.session_state.run_sel = [
+            r for r in st.session_state.run_sel if r in runs_all] or ([1] if 1 in runs_all else runs_all)
+        
+    # No "default=" when using a session_state-backed key
+    run_sel = st.multiselect("Run index", runs_all, key="run_sel")
+        
     lane_sel = st.multiselect("Lanes", lanes_all, default=lanes_all)
     type_sel = st.multiselect("Vehicle type", types_all, default=types_all)
     av_sel = st.multiselect("AV", av_all, default=av_all)
 
     st.header("Performance")
-    max_plot_vehicles = st.slider("Max vehicles to render (plots only)", 200, 5000, 1000, 100,
-                                  help="Caps number of vehicles drawn for heavy plots. Analytics still use full filtered data.")
+    max_plot_vehicles = st.slider(
+        "Max vehicles to render (plots only)", 200, 5000, 1000, 100,
+        help="Caps number of vehicles drawn for heavy plots. Analytics still use full filtered data.")
+    
     flow_window = st.slider("Flow window (s)", 5, 120, 30, 5)
     time_bin = st.slider("Bin (s) for density & space-mean speed", 1, 120, 10, 1)
 
