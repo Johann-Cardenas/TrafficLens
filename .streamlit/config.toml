@@ -1,0 +1,4 @@
+[server]
+maxUploadSize = 2048   # 2 GB
+enableCORS = false
+address = "0.0.0.0"
