@@ -1,8 +1,9 @@
-# Ignore .mypy_cache
+# Ignore all .mypy files
+*.myp
 .mypy_cache/
 
-# Ignore .csv files
+#ignore datafiles
+*.xlsx
+*.parquet
 *.csv
 
-# Ignore parquet files
-*.parquet
