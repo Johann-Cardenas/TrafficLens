@@ -11,8 +11,6 @@ This module implements a **microscopic traffic simulation** on a two-lane ring r
 - **Three car-following models:** IDM, Gipps, and GM
 - **MOBIL lane-changing rule:** Balances individual incentive with collective safety
 - **Ring road topology:** Periodic boundary conditions for steady-state analysis
-- **Interactive Streamlit interface:** Real-time parameter adjustment and visualization
-- **Comprehensive analysis:** Microscopic trajectories and macroscopic traffic measures
 
 ---
 
@@ -46,13 +44,13 @@ The application will open in your default web browser at `http://localhost:8501`
 
 ### 1. Network Setup
 
-#### Ring Road Configuration
+#### **Ring Road Configuration**
 - **Topology:** Two-lane circular road with periodic boundaries
 - **Lane numbering:** Lane 0 (outer), Lane 1 (inner)
 - **Vehicle length:** Zero (point-mass assumption)
 - **Initial conditions:** Uniform spacing with small velocity perturbations
 
-#### Initialization
+#### **Initialization**
 Vehicles are distributed evenly between lanes with staggered positions to avoid initial conflicts:
 - Lane 0: Vehicles at positions `i × (L / n₀)` for `i = 0, 1, ..., n₀-1`
 - Lane 1: Vehicles at positions `(i × (L / n₁) + L / (2n₁)) mod L`
@@ -63,11 +61,16 @@ Vehicles are distributed evenly between lanes with staggered positions to avoid 
 #### 2.1 IDM (Intelligent Driver Model)
 
 **Governing Equation:**
-```
-a = a_max [1 - (v/v₀)^δ - (s*/s)²]
 
-where s* = s₀ + vT + (v·Δv)/(2√(a·b))
-```
+$$
+a = a_{\text{max}} \left[1 - \left(\frac{v}{v_0}\right)^\delta - \left(\frac{s^*}{s}\right)^2\right]
+$$
+
+where the desired dynamic spacing is:
+
+$$
+s^* = s_0 + vT + \frac{v \cdot \Delta v}{2\sqrt{ab}}
+$$
 
 **Parameters:**
 | Parameter | Symbol | Default | Units | Description |
@@ -88,15 +91,22 @@ where s* = s₀ + vT + (v·Δv)/(2√(a·b))
 #### 2.2 Gipps Model
 
 **Governing Equations:**
-```
-v_free = v + 2.5aτ(1 - v/v₀)√(0.025 + v/v₀)
 
-v_safe = bτ + √[b²τ² - b(2(s-s₀) - vτ - v_lead²/b)]
+$$
+v_{\text{free}} = v + 2.5a\tau\left(1 - \frac{v}{v_0}\right)\sqrt{0.025 + \frac{v}{v_0}}
+$$
 
-v_new = min(v_free, v_safe, v₀)
+$$
+v_{\text{safe}} = b\tau + \sqrt{b^2\tau^2 - b\left[2(s-s_0) - v\tau - \frac{v_{\text{lead}}^2}{b}\right]}
+$$
 
-a = (v_new - v) / Δt
-```
+$$
+v_{\text{new}} = \min(v_{\text{free}}, v_{\text{safe}}, v_0)
+$$
+
+$$
+a = \frac{v_{\text{new}} - v}{\Delta t}
+$$
 
 **Parameters:**
 | Parameter | Symbol | Default | Units | Description |
@@ -116,11 +126,12 @@ a = (v_new - v) / Δt
 #### 2.3 GM (Gazis-Herman-Rothery) Model
 
 **Governing Equation:**
-```
-a = α × (v^l / s^m) × (-Δv)
 
-where Δv = v - v_lead
-```
+$$
+a = \alpha \cdot \frac{v^l}{s^m} \cdot (-\Delta v)
+$$
+
+where $\Delta v = v - v_{\text{lead}}$
 
 **Parameters:**
 | Parameter | Symbol | Default | Units | Description |
@@ -136,24 +147,33 @@ where Δv = v - v_lead
 - **Limitations:** Can be unstable, less realistic than IDM/Gipps
 
 **Stability Criterion:**
-For string stability, approximately: `α < 1 / (2T)` where T is effective time headway.
+For string stability, approximately: 
+
+$$
+\alpha < \frac{1}{2T}
+$$
+
+where $T$ is the effective time headway.
 
 ### 3. MOBIL Lane-Changing Rule
 
 **MOBIL:** Minimizing Overall Braking Induced by Lane changes
 
-#### Decision Criteria
+#### **Decision Criteria**
 
 **1. Safety Criterion:**
-```
-a_new_follower ≥ -b_safe
-```
-The new follower in the target lane must not brake harder than `b_safe` (typically 4 m/s²).
+
+$$
+a_{\text{new follower}} \geq -b_{\text{safe}}
+$$
+
+The new follower in the target lane must not brake harder than $b_{\text{safe}}$ (typically 4 m/s²).
 
 **2. Incentive Criterion:**
-```
-(a_target - a_current) + p(a_new_follower_target - a_new_follower_current) > a_th
-```
+
+$$
+(a_{\text{target}} - a_{\text{current}}) + p(a_{\text{new follower, target}} - a_{\text{new follower, current}}) > a_{\text{th}}
+$$
 
 Where:
 - `a_target`: Ego vehicle's acceleration in target lane
@@ -206,17 +226,19 @@ for each vehicle:
 ```
 
 **Time Step Selection:**
-- Default: `Δt = 0.1 s`
+- Default: $\Delta t = 0.1$ s
 - Smaller values (0.05 s) for higher accuracy
 - Larger values (0.2 s) for faster computation
-- **Stability condition:** `Δt < s₀ / v_max` to prevent vehicle overlap
+- **Stability condition:** $\Delta t < \frac{s_0}{v_{\text{max}}}$ to prevent vehicle overlap
 
-#### Leader-Follower Identification
+#### **Leader-Follower Identification**
 
 On a ring road with periodic boundaries:
-```
-gap = (x_leader - x_ego) mod L
-```
+
+$$
+\text{gap} = (x_{\text{leader}} - x_{\text{ego}}) \bmod L
+$$
+
 Leader is the vehicle with minimum positive gap in the target lane.
 
 ### 5. Visualization Components
@@ -259,19 +281,19 @@ Leader is the vehicle with minimum positive gap in the target lane.
    - Units: m/s
    
 2. **Density vs Time**
-   - Calculated as: `ρ = N / L` (vehicles/km)
+   - Calculated as: $\rho = \frac{N}{L}$ (vehicles/km)
    - Per-lane and total density
    
 3. **Flow vs Time**
-   - Calculated as: `q = ρ × v̄` (vehicles/hour)
+   - Calculated as: $q = \rho \times \bar{v}$ (vehicles/hour)
    - Throughput measure
 
 **Fundamental Diagram (Flow-Density)**
-- **X-axis:** Density ρ (veh/km)
-- **Y-axis:** Flow q (veh/h)
+- **X-axis:** Density $\rho$ (veh/km)
+- **Y-axis:** Flow $q$ (veh/h)
 - **Expected shape:**
-  - Rising branch (free-flow): `q = ρ × v_free`
-  - Peak at critical density: `q_max` (capacity)
+  - Rising branch (free-flow): $q = \rho \times v_{\text{free}}$
+  - Peak at critical density: $q_{\text{max}}$ (capacity)
   - Falling branch (congested): lower speeds
 - **Scatter:** Indicates transient dynamics and instabilities
 
@@ -484,151 +506,6 @@ Duration: 150 s
 - Smooth transitions (not excessive switching)
 - Improved flow over single-lane equivalent
 
----
-
-## 📈 Expected Outcomes
-
-### Learning Objectives
-
-After completing this assignment, you should understand:
-
-1. **Car-Following Dynamics**
-   - How different models represent driver behavior
-   - Stability criteria and string instability
-   - Calibration and parameter sensitivity
-
-2. **Lane-Changing Behavior**
-   - MOBIL's incentive and safety criteria
-   - Impact of politeness on collective performance
-   - Trade-offs between individual and system optimality
-
-3. **Microscopic-Macroscopic Link**
-   - How individual behavior emerges as aggregate patterns
-   - Connection between following models and fundamental diagram
-   - Capacity, density, and flow relationships
-
-4. **Simulation Techniques**
-   - Time-stepping algorithms
-   - Periodic boundary conditions
-   - Data collection and visualization
-
-### Practical Applications
-
-This simulation framework can be extended to:
-- **Highway design:** Lane addition analysis
-- **Traffic management:** Variable speed limits, ramp metering
-- **Autonomous vehicles:** Testing AV car-following algorithms
-- **Safety analysis:** Collision risk assessment
-- **Emissions modeling:** Stop-and-go increases fuel consumption
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**1. Simulation Too Slow**
-- Increase time step Δt (but ensure stability)
-- Reduce number of vehicles
-- Decrease simulation duration
-- Use simpler model (GM instead of Gipps)
-
-**2. Unrealistic Behavior (Crashes, Negative Speeds)**
-- Decrease time step Δt
-- Increase minimum spacing s₀
-- Reduce maximum acceleration
-- Check for NaN values in acceleration
-
-**3. No Lane Changes Occurring**
-- Lower acceleration threshold a_th
-- Reduce politeness p (more selfish)
-- Increase vehicle density (creates more incentive)
-- Check if b_safe is too high
-
-**4. Excessive Oscillations**
-- Reduce sensitivity α (GM model)
-- Increase time headway T (IDM)
-- Use more stable model (Gipps)
-- Lower density
-
-### Validation Checks
-
-**Physical Plausibility:**
-- Velocities: 0 ≤ v ≤ v₀
-- Accelerations: -b_max ≤ a ≤ a_max
-- Spacings: s ≥ 0 (no overlap)
-- Positions: 0 ≤ x < L
-
-**Conservation:**
-- Number of vehicles constant
-- Total road length conserved
-- No vehicles lost at boundaries
-
----
-
-## 📚 References
-
-### Key Papers
-
-1. **IDM:** Treiber, M., Hennecke, A., & Helbing, D. (2000). "Congested traffic states in empirical observations and microscopic simulations." *Physical Review E*, 62(2), 1805.
-
-2. **Gipps:** Gipps, P. G. (1981). "A behavioural car-following model for computer simulation." *Transportation Research Part B*, 15(2), 105-111.
-
-3. **GM:** Gazis, D. C., Herman, R., & Rothery, R. W. (1961). "Nonlinear follow-the-leader models of traffic flow." *Operations Research*, 9(4), 545-567.
-
-4. **MOBIL:** Kesting, A., Treiber, M., & Helbing, D. (2007). "General lane-changing model MOBIL for car-following models." *Transportation Research Record*, 1999(1), 86-94.
-
-5. **Traffic Flow Theory:** Treiber, M., & Kesting, A. (2013). *Traffic Flow Dynamics: Data, Models and Simulation*. Springer.
-
-### Online Resources
-
-- [Traffic Simulation Website](https://traffic-simulation.de/) - Interactive demos
-- [IDM Documentation](https://en.wikipedia.org/wiki/Intelligent_driver_model)
-- [MOBIL Model](https://traffic-simulation.de/MOBIL.html)
-
----
-
-## 🔧 Customization and Extension
-
-### Adding New Car-Following Models
-
-To implement a new model (e.g., Optimal Velocity Model):
-
-```python
-class OVM:
-    def __init__(self, alpha: float = 0.5, v_max: float = 30.0):
-        self.alpha = alpha
-        self.v_max = v_max
-    
-    def optimal_velocity(self, s: float) -> float:
-        # Sigmoid function for optimal velocity
-        return self.v_max * (np.tanh(s - 5) + np.tanh(5)) / (1 + np.tanh(5))
-    
-    def acceleration(self, v: float, s: float, dv: float) -> float:
-        v_opt = self.optimal_velocity(s)
-        return self.alpha * (v_opt - v)
-```
-
-Then add to simulation initialization logic.
-
-### Multi-Lane Extension
-
-To extend beyond two lanes:
-1. Modify `Vehicle` class to support `lane ∈ {0, 1, ..., n-1}`
-2. Update `_check_lane_change` to consider left and right lanes
-3. Add lane-specific visualization layers
-
-### Stochastic Elements
-
-Add noise for realism:
-```python
-def _calculate_acceleration(self, ...):
-    a_deterministic = self.cf_model.acceleration(...)
-    noise = np.random.normal(0, 0.1)  # m/s² noise
-    return a_deterministic + noise
-```
-
----
 
 ## 💻 Technical Specifications
 
@@ -657,58 +534,6 @@ plotly >= 5.14.0
 
 ---
 
-## 🎓 Pedagogical Notes
-
-### For Students
-
-This assignment bridges **microscopic** (individual vehicle) and **macroscopic** (aggregate flow) perspectives in traffic engineering. Key learning points:
-
-1. **Emergence:** Complex traffic patterns arise from simple rules
-2. **Nonlinearity:** Small parameter changes can cause qualitative shifts
-3. **Feedback:** Lane-changing creates coupled dynamics between lanes
-4. **Validation:** Compare simulation to theory (e.g., fundamental diagram)
-
-### For Instructors
-
-**Assessment Criteria:**
-- Correct implementation of all three models
-- Proper MOBIL integration
-- Accurate visualization of micro/macro measures
-- Insightful analysis of stability and capacity
-- Clear documentation and code quality
-
-**Extension Ideas:**
-- Add on-ramps/off-ramps
-- Heterogeneous vehicle mix (cars, trucks)
-- Adaptive cruise control (ACC) vehicles
-- Driver heterogeneity (aggressive vs. cautious)
-
----
-
-## 📝 Conclusion
-
-This simulation provides a comprehensive framework for studying microscopic traffic dynamics on multi-lane roads. By implementing and comparing three established car-following models alongside realistic lane-changing behavior, we gain insight into:
-
-- **Stability mechanisms:** Why some models produce smooth flow while others oscillate
-- **Capacity determinants:** How model parameters and lane-changing affect throughput
-- **Emergent phenomena:** Stop-and-go waves, lane imbalances, hysteresis
-- **Design implications:** Optimal parameter choices for different scenarios
-
-The interactive Streamlit interface makes exploration intuitive, while the modular code structure facilitates extensions and customization.
-
-**Next Steps:** Consider implementing heterogeneous fleets, on/off-ramps, or integrating real traffic data for calibration.
-
----
-
-## 📞 Contact and Support
-
-For questions, bug reports, or contributions related to this assignment module, please refer to the main TrafficLens repository.
-
-**Author:** TrafficLens Development Team  
-**Version:** 1.0  
-**Last Updated:** October 2025
-
----
 
 *Happy Simulating! 🚗💨*
 
